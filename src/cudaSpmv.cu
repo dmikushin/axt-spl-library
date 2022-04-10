@@ -170,66 +170,6 @@ static void printRunSettings( const str_inputArgs sia )
 
 
 
-static __host__ void getCudaDeviceCounter( int * counter )
-{
-	HANDLE_CUDA_ERROR( cudaGetDeviceCount(counter) );
-	HDL; printf( "cuda device properties\n" ); HDL;
-	printf( "cudaDeviceCounter = %d\n\n", *counter );
-	return;
-}
-
-
-
-static __host__ const char * getCudaComputeModeString( const int computeModeCode )
-{
-	switch( computeModeCode )
-	{
-		case 0: return "cudaComputeModeDefault";
-		case 1: return "cudaComputeModeExclusive";
-		case 2: return "cudaComputeModeProhibited";
-		case 3: return "cudaComputeModeExclusiveProcess";
-	}
-	return "Unknown cudaComputeModeCode";
-}
-
-
-
-static __host__ void printCudaDeviceProperties( int cudaDeviceID )
-{
-	cudaDeviceProp cudaDeviceProperties;
-	HANDLE_CUDA_ERROR( cudaGetDeviceProperties( &cudaDeviceProperties, cudaDeviceID ) );
-	printf( "cudaDeviceID:                                     %d <-------------------\n", cudaDeviceID );
-	printf( "cudaDeviceProperties.name:                        %s\n", cudaDeviceProperties.name );
-	printf( "cudaDeviceProperties.totalGlobalMem:              %.1f %s\n", ( (float) cudaDeviceProperties.totalGlobalMem / (float) ( 1024 * 1024 * 1024 ) ), "GBytes" );
-	printf( "cudaDeviceProperties.sharedMemPerBlock:           %.1f %s\n", ( (float) cudaDeviceProperties.sharedMemPerBlock / (float) 1024 ), "KBytes" );
-	printf( "cudaDeviceProperties.textureAlignment:            %.1f %s\n", ( (float) cudaDeviceProperties.textureAlignment ), "Bytes" );
-	printf( "cudaDeviceProperties.maxThreadsDim[0]:            %d\n", cudaDeviceProperties.maxThreadsDim[0] );
-	printf( "cudaDeviceProperties.maxGridSize[0]:              %d\n", cudaDeviceProperties.maxGridSize[0] );
-	printf( "cudaDeviceProperties.maxThreadsPerBlock:          %d\n", cudaDeviceProperties.maxThreadsPerBlock );
-	printf( "cudaDeviceProperties.maxThreadsPerMultiProcessor: %d\n", cudaDeviceProperties.maxThreadsPerMultiProcessor );
-	printf( "cudaDeviceProperties.multiProcessorCount:         %d\n", cudaDeviceProperties.multiProcessorCount  );
-	printf( "cudaDeviceProperties.warpSize:                    %d\n", cudaDeviceProperties.warpSize );
-	printf( "cudaDeviceProperties.canMapHostMemory:            %d\n", cudaDeviceProperties.canMapHostMemory );
-	printf( "cudaDeviceProperties.major:                       %d\n", cudaDeviceProperties.major );
-	printf( "cudaDeviceProperties.minor:                       %d\n", cudaDeviceProperties.minor );
-	printf( "cudaDeviceProperties.regsPerBlock:                %d\n", cudaDeviceProperties.regsPerBlock );
-	printf( "cudaDeviceProperties.multiProcessorCount:         %d\n", cudaDeviceProperties.multiProcessorCount );
-	printf( "cudaDeviceProperties.computeMode:                 %s\n", getCudaComputeModeString( cudaDeviceProperties.computeMode ) );
-	// set the bandwidth of the shared memory banks
-	if ( sizeof(FPT) == 4 ) HANDLE_CUDA_ERROR( cudaDeviceSetSharedMemConfig( cudaSharedMemBankSizeFourByte  ) );
-	if ( sizeof(FPT) == 8 ) HANDLE_CUDA_ERROR( cudaDeviceSetSharedMemConfig( cudaSharedMemBankSizeEightByte ) );
-	// verify bandwidth of the shared memory banks
-	cudaSharedMemConfig csmc;
-	HANDLE_CUDA_ERROR( cudaDeviceGetSharedMemConfig( &csmc ) );
-	unsigned short int bpb;
-	if ( csmc == cudaSharedMemBankSizeFourByte  ) bpb = 4;
-	if ( csmc == cudaSharedMemBankSizeEightByte ) bpb = 8;
-	printf( "cudaDeviceSharedMemConfig:                        %1hu bytes\n", bpb );
-	//HDL;
-	return;
-}
-
-
 #ifndef TEST_POINTER
 	#define TEST_POINTER( p ) { if ( p == NULL ) { fflush(stdout); printf( "\nFile: %s Line: %d Pointer: %s is null\n", __FILE__, __LINE__, #p ); fflush(stdout); exit( EXIT_FAILURE ); } }
 #endif
@@ -2275,22 +2215,6 @@ int main( int argc, char ** argv )
 
 	// print run settings
 	printRunSettings( sia );
-
-	// count available GPU devices
-	int cudaDeviceCounter;
-	getCudaDeviceCounter( &cudaDeviceCounter );
-
-	// print GPUs' info
-	if ( cudaDeviceCounter > 0 )
-	{
-		int cudaDeviceID;
-		for ( cudaDeviceID = 0; cudaDeviceID < cudaDeviceCounter; cudaDeviceID++ )
-			printCudaDeviceProperties( cudaDeviceID );
-		cudaDeviceID = DEVICE;
-		HANDLE_CUDA_ERROR( cudaSetDevice( cudaDeviceID) );
-		HANDLE_CUDA_ERROR( cudaGetDevice(&cudaDeviceID) );
-		printf( "cudaDeviceSelected:                               %d <-------------------\n", cudaDeviceID ); fflush(stdout);
-	}
 
 	// CSR format  ------------------------------------------------------------------------------------------------------------------
 	// read matrix in CSR format
