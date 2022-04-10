@@ -2,21 +2,21 @@
 
 This project contains the code to perform the SpMV product on NVIDIA's GPUs:
 
-* AXT format.
-        - Uncompacted with tileHeight = 1.
-        - Uncompacted with tileHeight > 1.
-        - Compacted with tileHeight = 1 (not completed)
+* AXT format:
+	- Uncompacted with tileHeight = 1
+	- Uncompacted with tileHeight > 1
+	- Compacted with tileHeight = 1 (not completed)
 
-* AXC format.
-	- New version.
+* AXC format:
+	- New version
 
-* K1 format.
-	- Original version from paper.
+* K1 format:
+	- Original version from the paper
 	- Improved version (reordering integrated)
 
-* CSR format.
+* CSR format:
         - Naive version
-        - CUSPARSE function.
+        - CUSPARSE function
 
 ## Prerequisites
 
