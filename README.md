@@ -18,6 +18,11 @@ This project contains the code to perform the SpMV product on NVIDIA's GPUs:
         - Naive version
         - CUSPARSE function.
 
+## Prerequisites
+
+* CUDA Toolkit version 11 or newer
+* CMake 3.18 or newer
+
 ## Building
 
 ```
