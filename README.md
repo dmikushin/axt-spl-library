@@ -18,6 +18,23 @@ This project contains the code to perform the SpMV product on NVIDIA's GPUs:
         - Naive version
         - CUSPARSE function.
 
+## Building
+
+```
+mkdir build
+cd build
+cmake ..
+make
+```
+
+## Benchmarking
+
+```
+cd build
+unzip ../utils/mac_econ_fwd500.zip
+./test_gpu_spmv 32 mac_econ_fwd500.csr
+```
+
 ## Citation
 
 ```

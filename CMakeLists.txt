@@ -7,19 +7,19 @@ option(USE_OPENMP "Use OpenMP" TRUE)
 
 find_package(CUDAToolkit REQUIRED)
 
-add_executable(cudaSpmv src/cudaSpmv.cu)
-target_include_directories(cudaSpmv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(cudaSpmv PRIVATE CUDA::cusparse)
+add_executable(test_gpu_spmv src/test_gpu_spmv.cu)
+target_include_directories(test_gpu_spmv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(test_gpu_spmv PRIVATE CUDA::cusparse)
 
 if (USE_OPENMP)
 message(STATUS "Using OpenMP")
 find_package(OpenMP REQUIRED)
-target_compile_definitions(cudaSpmv PRIVATE _OMP_)
-target_link_libraries(cudaSpmv PUBLIC OpenMP::OpenMP_CXX)
+target_compile_definitions(test_gpu_spmv PRIVATE _OMP_)
+target_link_libraries(test_gpu_spmv PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-set_property(TARGET cudaSpmv PROPERTY CUDA_ARCHITECTURES 60 70 86)
+set_property(TARGET test_gpu_spmv PROPERTY CUDA_ARCHITECTURES 60 70 86)
 
-target_compile_definitions(cudaSpmv PRIVATE NUM_ITE=${NUM_ITE})
-target_compile_definitions(cudaSpmv PRIVATE FP_TYPE=FP_DOUBLE)
+target_compile_definitions(test_gpu_spmv PRIVATE NUM_ITE=${NUM_ITE})
+target_compile_definitions(test_gpu_spmv PRIVATE FP_TYPE=FP_DOUBLE)
 
