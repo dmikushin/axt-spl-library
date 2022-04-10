@@ -129,10 +129,6 @@ static str_inputArgs checkArgs( const UIN argc, char ** argv )
 
 static void printRunSettings( const str_inputArgs sia )
 {
-	FILE * fh = fopen( "HASH.txt", "r+" );
-	char hash[128];
-	if ( fscanf( fh, "%s", &(hash) ) != 1 ) ABORT;
-	fclose( fh );
 	time_t t = time(NULL);
 	struct tm tm = *localtime(&t);
 	HDL; printf( "run settings\n" ); HDL;
@@ -146,9 +142,8 @@ static void printRunSettings( const str_inputArgs sia )
 	printf( "hostname:           %s\n", "ctgpgpu2.CITIUS" );
 	#endif
 	printf( "srcFileName:        %s\n", __FILE__ );
-	printf( "gitHash:            %s\n", hash );
-	printf( "date:               %d-%d-%d (yyyy-mm-dd)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday );
-	printf( "time:               %d:%d:%d (hh:mm:ss)\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
+	printf( "date:               %04d-%02d-%02d (yyyy-mm-dd)\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday );
+	printf( "time:               %02d:%02d:%02d (hh:mm:ss)\n", tm.tm_hour, tm.tm_min, tm.tm_sec );
 	printf( "matFileName:        %s\n", sia.matFileName );
 	#ifdef _OMP_
 	printf( "ompMaxThreads:      %d\n", sia.ompMT );
@@ -549,11 +544,12 @@ static __host__ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, c
 	// get parameteres for cuSPARSE
 	const UIN                     nrows = matCSR.nrows;
 	const UIN                       nnz = matCSR.nnz;
-	      cusparseHandle_t    cusparseH = NULL;
-	const cusparseAlgMode_t  cusparseAM = CUSPARSE_ALG1;
+	cusparseHandle_t    cusparseH = NULL;
+	const cusparseSpMVAlg_t cusparseAM = CUSPARSE_SPMV_CSR_ALG1;
 	const cusparseOperation_t cusparseO = CUSPARSE_OPERATION_NON_TRANSPOSE;
-	      cusparseMatDescr_t cusparseMD = NULL;
-	      size_t    cudaSpaceBufferSize;
+	cusparseSpMatDescr_t cusparseMD = NULL;
+	cusparseDnVecDescr_t cusparseVD1 = NULL, cusparseVD2 = NULL;
+	size_t    cudaSpaceBufferSize;
 	const FPT                      zero = (FPT)  0;
 	const FPT                       one = (FPT)  1;
 	#if FP_TYPE == FP_FLOAT
@@ -561,11 +557,6 @@ static __host__ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, c
 	#else
 		cudaDataType cudaDT = CUDA_R_64F;
 	#endif
-	// create handlers for cuSPARSE
-	HANDLE_CUSPARSE_ERROR( cusparseCreate(&cusparseH) );
-	HANDLE_CUSPARSE_ERROR( cusparseCreateMatDescr( &cusparseMD ) );
-	HANDLE_CUSPARSE_ERROR( cusparseSetMatIndexBase( cusparseMD, CUSPARSE_INDEX_BASE_ZERO ) );
-	HANDLE_CUSPARSE_ERROR( cusparseSetMatType( cusparseMD, CUSPARSE_MATRIX_TYPE_GENERAL ) );
 	// allocate memory on GPU
 	FPT * d_val; HANDLE_CUDA_ERROR( cudaMalloc( &d_val,           nnz * sizeof(FPT) ) ); TEST_POINTER( d_val );
 	int * d_col; HANDLE_CUDA_ERROR( cudaMalloc( &d_col,           nnz * sizeof(int) ) ); TEST_POINTER( d_col );
@@ -577,9 +568,18 @@ static __host__ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, c
 	HANDLE_CUDA_ERROR( cudaMemcpy( d_col, matCSR.col,           nnz * sizeof(int), cudaMemcpyHostToDevice ) );
 	HANDLE_CUDA_ERROR( cudaMemcpy( d_row, matCSR.row, ( nrows + 1 ) * sizeof(int), cudaMemcpyHostToDevice ) );
 	HANDLE_CUDA_ERROR( cudaMemcpy( d_vec, vec,                nrows * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	// get space buffer for cusparseCsrmvEx
-	HANDLE_CUSPARSE_ERROR( cusparseCsrmvEx_bufferSize( cusparseH, cusparseAM, cusparseO, matCSR.nrows, matCSR.nrows, matCSR.nnz, &one, cudaDT, cusparseMD, \
-                                                        d_val, cudaDT, d_row, d_col, d_vec, cudaDT, &zero, cudaDT, d_res, cudaDT, cudaDT, &cudaSpaceBufferSize ) );
+        // create handlers for cuSPARSE
+        HANDLE_CUSPARSE_ERROR( cusparseCreate(&cusparseH) );
+        HANDLE_CUSPARSE_ERROR( cusparseCreateCsr(&cusparseMD, matCSR.nrows, matCSR.nrows, matCSR.nnz,
+                                      (void *)d_val, (void *)d_col, (void *)d_row,
+                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                                      CUSPARSE_INDEX_BASE_ZERO, cudaDT ));
+        HANDLE_CUSPARSE_ERROR( cusparseCreateDnVec(&cusparseVD1, matCSR.nrows, (void*)d_vec, cudaDT ));
+        HANDLE_CUSPARSE_ERROR( cusparseCreateDnVec(&cusparseVD2, matCSR.nrows, d_res, cudaDT ));
+	// get space buffer for cusparseSpMV
+	HANDLE_CUSPARSE_ERROR( cusparseSpMV_bufferSize(cusparseH, cusparseO,
+                    (void *)&one, cusparseMD, cusparseVD1, (void *)&zero,
+                    cusparseVD2, cudaDT, cusparseAM, &cudaSpaceBufferSize ));
 	void * cudaSpaceBuffer; HANDLE_CUDA_ERROR( cudaMalloc( &cudaSpaceBuffer, cudaSpaceBufferSize ) );
 	// create events for time measuring
 	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
@@ -590,8 +590,9 @@ static __host__ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, c
 	for ( i = 0; i < NUM_ITE; i++ )
 	{
 		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		HANDLE_CUSPARSE_ERROR( cusparseCsrmvEx( cusparseH, cusparseAM, cusparseO, matCSR.nrows, matCSR.nrows, matCSR.nnz, &one, cudaDT, cusparseMD, \
-                                                  d_val, cudaDT, d_row, d_col, d_vec, cudaDT, &zero, cudaDT, d_res, cudaDT, cudaDT, cudaSpaceBuffer ) );
+		HANDLE_CUSPARSE_ERROR( cusparseSpMV( cusparseH, cusparseO,
+                      (void *)&one, cusparseMD, cusparseVD1, (void *)&zero,
+                      cusparseVD2, cudaDT, cusparseAM, cudaSpaceBuffer));
 		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
 		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
 		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );

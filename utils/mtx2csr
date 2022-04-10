@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+#
+# Convert Matrix Market MTX format to CSR format readable by our test programs
+#
+import argparse
+import scipy.io
+import scipy.sparse
+import sys
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', required=True, type=str)
+    parser.add_argument('-o', required=True, type=str)
+    args = parser.parse_args()
+
+    coo_mat = scipy.io.mmread(args.i)
+    csr_mat = coo_mat.tocsr(copy=True)
+
+    with open(args.o, 'w') as f:
+        nrows = csr_mat.shape[0]
+        print("{} {}".format(nrows, csr_mat.nnz), file=f)
+        for i in range(csr_mat.nnz):
+            print("{} {}".format(csr_mat.data[i], csr_mat.indices[i]), file=f)
+        for i in range(nrows + 1):
+            print("{}".format(csr_mat.indptr[i]), file=f)

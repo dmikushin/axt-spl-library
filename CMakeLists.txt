@@ -5,9 +5,11 @@ project(axt_spl CXX CUDA)
 set(NUM_ITE 1) # Number of iterations to run kernels
 option(USE_OPENMP "Use OpenMP" TRUE)
 
+find_package(CUDAToolkit REQUIRED)
+
 add_executable(cudaSpmv src/cudaSpmv.cu)
 target_include_directories(cudaSpmv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(cudaSpmv PRIVATE cusparse)
+target_link_libraries(cudaSpmv PRIVATE CUDA::cusparse)
 
 if (USE_OPENMP)
 message(STATUS "Using OpenMP")
