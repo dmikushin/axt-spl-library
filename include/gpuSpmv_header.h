@@ -19,73 +19,7 @@
 
 #include <cusparse.h>
 
-#ifdef _OMP_
-	#include <omp.h>
-#endif
-
-
-
-#ifndef FP_FLOAT
-	#define FP_FLOAT  1
-#endif
-
-
-
-#ifndef FP_DOUBLE
-	#define FP_DOUBLE 2
-#endif
-
-
-
-#if FP_TYPE == FP_FLOAT
-	typedef float  FPT;
-	char fptMsg[6] = "float";
-#endif
-
-
-
-#if FP_TYPE == FP_DOUBLE
-	typedef double FPT;
-	char fptMsg[7] = "double";
-#endif
-
-
-
-#ifndef UIN
-	typedef unsigned int UIN;
-#endif
-
-
-
-#ifndef HDL
-	#define HDL { printf( "-------------------------------------------------------------------------------------\n" ); }
-#endif
-
-
-
-#ifndef BM
-	#define BM { fflush( stdout ); printf( "\nFile: %s    Line: %d.\n", __FILE__, __LINE__ ); fflush( stdout ); }
-#endif
-
-
-
-#ifndef NUM_ITE
-	#define NUM_ITE 250
-#endif
-
-
-
-#ifndef HBRICK_SIZE
-	#define HBRICK_SIZE 32
-#endif
-
-
-
-#ifndef CHUNK_SIZE
-	#define CHUNK_SIZE 32
-#endif
-
-
+#include "defines.h"
 
 typedef struct { char matFileName[48]; UIN cudaBlockSize; UIN ompMaxThreads; } str_inputArgs;
 
