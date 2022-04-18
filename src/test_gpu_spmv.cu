@@ -2,23 +2,20 @@
 // author: Edoardo Coronado
 // date: 21-08-2019 (dd-mm-yyyy)
 
-#ifndef __CUDA_SPMV_HEADER__
-#define __CUDA_SPMV_HEADER__
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <math.h>
-#include <cusparse.h>
 
 #include "defines.h"
 #include "diff.h"
 #include "axt.h"
+#include "axc.h"
+#include "k1.h"
+#include "ncsr.h"
 
 typedef struct { UIN cbs; char matFileName[48]; UIN ompMT; } str_inputArgs;
-
-
 
 static str_inputArgs checkArgs( const UIN argc, char ** argv )
 {
@@ -259,8 +256,6 @@ static str_formatData getFormatDataCSR( str_matCSR * matCSR )
 	return( fd );
 }
 
-
-
 static void init_vec( const UIN ompNT, const UIN len, FPT * vec )
 {
 	UIN i;
@@ -270,252 +265,32 @@ static void init_vec( const UIN ompNT, const UIN len, FPT * vec )
 	return;
 }
 
+str_res test_ncsr( const UIN ompNT, const str_matCSR matCSR, const FPT * vec, const FPT * ref );
 
-
-static void ncsr( const UIN ompNT, const str_matCSR matCSR, const FPT * vec, FPT * res )
-{
-	UIN i, j;
-	FPT aux;
-	#pragma omp parallel for default(shared) private(i,j,aux) num_threads(ompNT) schedule(OMP_SCH) if(_OPENMP)
-	for ( i = 0; i < matCSR.nrows; i++ )
-	{
-		aux = (FPT) 0;
-		for ( j = matCSR.row[i]; j < matCSR.row[i+1]; j++ )
-		{
-			aux = aux + matCSR.val[j] * vec[matCSR.col[j]];
-		}
-		res[i] = aux;
-	}
-	return;
-}
-
-
-
-static str_res test_ncsr( const UIN ompNT, const str_matCSR matCSR, const FPT * vec, const FPT * ref )
-{
-	// timed iterations
-	double ti = 0.0, tt = 0.0;
-	struct timespec t1, t2;
-	FPT * res = (FPT *) calloc( matCSR.nrows, sizeof(FPT) ); TEST_POINTER( res );
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		GT( t1 );
-		ncsr( ompNT, matCSR, vec, res );
-		GT( t2 );
-		ti = measure_time( t2, t1 );
-		tt = tt + ti;
-	}
-	// store results
-	str_res sr;
-	strcpy( sr.name, "ncsr" );
-	sr.et    = tt / (double) NUM_ITE;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matCSR.nnz ) ) / sr.et;
-	get_errors( matCSR.nrows, ref, res, &(sr.sErr) );
-	free( res );
-	return( sr );
-}
-
-static __host__ str_res test_gcsr( const UIN cudaBlockSize, const str_matCSR matCSR, const FPT * vec, const FPT * ref )
-{
-	// get parameters
-	const UIN        nrows = matCSR.nrows;
-	const UIN          nnz = matCSR.nnz;
-	const UIN cudaBlockNum = ( nrows + cudaBlockSize - 1 ) / cudaBlockSize;
-	// allocate memory on GPU
-	FPT * d_val; HANDLE_CUDA_ERROR( cudaMalloc( &d_val,          nnz * sizeof(FPT) ) ); TEST_POINTER( d_val );
-	UIN * d_col; HANDLE_CUDA_ERROR( cudaMalloc( &d_col,          nnz * sizeof(UIN) ) ); TEST_POINTER( d_col );
-	UIN * d_row; HANDLE_CUDA_ERROR( cudaMalloc( &d_row, (nrows + 1 ) * sizeof(UIN) ) ); TEST_POINTER( d_row );
-	FPT * d_vec; HANDLE_CUDA_ERROR( cudaMalloc( &d_vec,        nrows * sizeof(FPT) ) ); TEST_POINTER( d_vec );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res,        nrows * sizeof(FPT) ) ); TEST_POINTER( d_res );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_val, matCSR.val,          nnz * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_col, matCSR.col,          nnz * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_row, matCSR.row, ( nrows + 1 )* sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_vec, vec,               nrows * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gcsr <<<cudaBlockNum, cudaBlockSize>>> ( nrows, d_val, d_col, d_row, d_vec, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) calloc( matCSR.nrows, sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_val ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_col ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_row ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_vec ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res ) );
-	// store results
-	str_res sr;
-	strcpy( sr.name, "gcsr" );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matCSR.nnz ) ) / sr.et;
-	get_errors( matCSR.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
-
-
-
-static __host__ const char * cusparseGetErrorMessage( cusparseStatus_t statusID )
-{
-	switch(statusID)
-	{
-		case CUSPARSE_STATUS_NOT_INITIALIZED:           return "CUSPARSE_STATUS_NOT_INITIALIZED";
-		case CUSPARSE_STATUS_ALLOC_FAILED:              return "CUSPARSE_STATUS_ALLOC_FAILED";
-		case CUSPARSE_STATUS_INVALID_VALUE:             return "CUSPARSE_STATUS_INVALID_VALUE";
-		case CUSPARSE_STATUS_ARCH_MISMATCH:             return "CUSPARSE_STATUS_ARCH_MISMATCH";
-		case CUSPARSE_STATUS_MAPPING_ERROR:             return "CUSPARSE_STATUS_MAPPING_ERROR";
-		case CUSPARSE_STATUS_EXECUTION_FAILED:          return "CUSPARSE_STATUS_EXECUTION_FAILED";
-		case CUSPARSE_STATUS_INTERNAL_ERROR:            return "CUSPARSE_STATUS_INTERNAL_ERROR";
-		case CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED: return "CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED";
-	}
-	return "<cusparse unknown>";
-}
-
-
-
-#ifndef HANDLE_CUSPARSE_ERROR
-	#define HANDLE_CUSPARSE_ERROR( cseID ) { if ( cseID != CUSPARSE_STATUS_SUCCESS ) { printf( "FILE: %s LINE: %d CUBLAS_ERROR: %s\n", __FILE__, __LINE__, cusparseGetErrorMessage( cseID ) ); printf( "\nvim %s +%d\n", __FILE__, __LINE__); exit( EXIT_FAILURE ); } }
-#endif
-
-
-
-static __host__ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, const FPT * ref )
-{
-	// get parameteres for cuSPARSE
-	const UIN                     nrows = matCSR.nrows;
-	const UIN                       nnz = matCSR.nnz;
-	cusparseHandle_t    cusparseH = NULL;
-	const cusparseSpMVAlg_t cusparseAM = CUSPARSE_SPMV_CSR_ALG1;
-	const cusparseOperation_t cusparseO = CUSPARSE_OPERATION_NON_TRANSPOSE;
-	cusparseSpMatDescr_t cusparseMD = NULL;
-	cusparseDnVecDescr_t cusparseVD1 = NULL, cusparseVD2 = NULL;
-	size_t    cudaSpaceBufferSize;
-	const FPT                      zero = (FPT)  0;
-	const FPT                       one = (FPT)  1;
-	#if FP_TYPE == FP_FLOAT
-		cudaDataType cudaDT = CUDA_R_32F;
-	#else
-		cudaDataType cudaDT = CUDA_R_64F;
-	#endif
-	// allocate memory on GPU
-	FPT * d_val; HANDLE_CUDA_ERROR( cudaMalloc( &d_val,           nnz * sizeof(FPT) ) ); TEST_POINTER( d_val );
-	int * d_col; HANDLE_CUDA_ERROR( cudaMalloc( &d_col,           nnz * sizeof(int) ) ); TEST_POINTER( d_col );
-	int * d_row; HANDLE_CUDA_ERROR( cudaMalloc( &d_row, ( nrows + 1 ) * sizeof(int) ) ); TEST_POINTER( d_row );
-	FPT * d_vec; HANDLE_CUDA_ERROR( cudaMalloc( &d_vec,         nrows * sizeof(FPT) ) ); TEST_POINTER( d_vec );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res,         nrows * sizeof(FPT) ) ); TEST_POINTER( d_res );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_val, matCSR.val,           nnz * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_col, matCSR.col,           nnz * sizeof(int), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_row, matCSR.row, ( nrows + 1 ) * sizeof(int), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_vec, vec,                nrows * sizeof(FPT), cudaMemcpyHostToDevice ) );
-        // create handlers for cuSPARSE
-        HANDLE_CUSPARSE_ERROR( cusparseCreate(&cusparseH) );
-        HANDLE_CUSPARSE_ERROR( cusparseCreateCsr(&cusparseMD, matCSR.nrows, matCSR.nrows, matCSR.nnz,
-                                      (void *)d_val, (void *)d_col, (void *)d_row,
-                                      CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO, cudaDT ));
-        HANDLE_CUSPARSE_ERROR( cusparseCreateDnVec(&cusparseVD1, matCSR.nrows, (void*)d_vec, cudaDT ));
-        HANDLE_CUSPARSE_ERROR( cusparseCreateDnVec(&cusparseVD2, matCSR.nrows, d_res, cudaDT ));
-	// get space buffer for cusparseSpMV
-	HANDLE_CUSPARSE_ERROR( cusparseSpMV_bufferSize(cusparseH, cusparseO,
-                    (void *)&one, cusparseMD, cusparseVD1, (void *)&zero,
-                    cusparseVD2, cudaDT, cusparseAM, &cudaSpaceBufferSize ));
-	void * cudaSpaceBuffer; HANDLE_CUDA_ERROR( cudaMalloc( &cudaSpaceBuffer, cudaSpaceBufferSize ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0, tt = 0.0;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		HANDLE_CUSPARSE_ERROR( cusparseSpMV( cusparseH, cusparseO,
-                      (void *)&one, cusparseMD, cusparseVD1, (void *)&zero,
-                      cusparseVD2, cudaDT, cusparseAM, cudaSpaceBuffer));
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) calloc( nrows, sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_val ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_col ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_row ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_vec ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res ) );
-	// store results
-	str_res sr;
-	strcpy( sr.name, "gcucsr" );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( (double) matCSR.nnz * 2.0 ) / sr.et;
-	get_errors( matCSR.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
-
-
+str_res test_gcsr( const UIN cudaBlockSize, const str_matCSR matCSR, const FPT * vec, const FPT * ref );
 
 typedef struct { UIN ind; UIN val; } str_pair;
 
-
-
-typedef struct { UIN nrows; UIN nnz; UIN chunkNum; UIN lenVC; UIN * permi; UIN * nmc; UIN * chp; FPT * val; UIN * col; } str_matK1;
-
-
-
 static int orderFunction( const void * ele1, const void * ele2 )
 {
-	return (  ( (str_pair *) ele2 )->val - ( (str_pair *) ele1 )->val  );
+       return (  ( (str_pair *) ele2 )->val - ( (str_pair *) ele1 )->val  );
 }
-
-
 
 static void getArrayPermiK1( const str_matCSR matCSR, str_matK1 * matK1 )
 {
-	str_pair * list = (str_pair *) malloc( matCSR.nrows * sizeof(str_pair) ); TEST_POINTER( list );
-	UIN i;
-	for ( i = 0; i < matK1->nrows; i++ )
-	{
-		list[i].ind = i;
-		list[i].val = matCSR.rl[i];
-	}
-	qsort( list, matK1->nrows, sizeof(str_pair), orderFunction );
-	for ( i = 0; i < matK1->nrows; i++ )
-		matK1->permi[i] = list[i].ind;
-	free( list );
-	return;
+       str_pair * list = (str_pair *) malloc( matCSR.nrows * sizeof(str_pair) ); TEST_POINTER( list );
+       UIN i;
+       for ( i = 0; i < matK1->nrows; i++ )
+       {
+               list[i].ind = i;
+               list[i].val = matCSR.rl[i];
+       }
+       qsort( list, matK1->nrows, sizeof(str_pair), orderFunction );
+       for ( i = 0; i < matK1->nrows; i++ )
+               matK1->permi[i] = list[i].ind;
+       free( list );
+       return;
 }
-
-
 
 static UIN getArraysNmcChpK1( const str_matCSR matCSR, str_matK1 * matK1 )
 {
@@ -531,9 +306,7 @@ static UIN getArraysNmcChpK1( const str_matCSR matCSR, str_matK1 * matK1 )
 		matK1->chp[i] = matK1->chp[i-1] + ( matK1->nmc[i-1] * CHUNK_SIZE );
 	return l;
 }
-
-
-
+ 
 static void getArraysValColK1( const str_matCSR matCSR, str_matK1 * matK1 )
 {
 	const UIN chunkNum = matK1->chunkNum;
@@ -555,9 +328,7 @@ static void getArraysValColK1( const str_matCSR matCSR, str_matK1 * matK1 )
 	}
 	return;
 }
-
-
-
+ 
 static str_formatData getFormatDataK1( const UIN blockSize, const str_matCSR matCSR, const FPT * vec, str_matK1 * matK1 )
 {
 	// get K1 parameters
@@ -624,71 +395,9 @@ static str_formatData getFormatDataK1( const UIN blockSize, const str_matCSR mat
 	return( fd );
 }
 
-static __host__ str_res test_gk1( const UIN cudaBlockSize, const str_matK1 matK1, const FPT * vec, const FPT * ref )
-{
-	// 
-	UIN cudaBlockNum = ( matK1.nrows + cudaBlockSize - 1 ) / cudaBlockSize;
-	// allocate memory on GPU
-	FPT * d_val;   HANDLE_CUDA_ERROR( cudaMalloc( &d_val,   matK1.lenVC                 * sizeof(FPT) ) ); TEST_POINTER( d_val   );
-	UIN * d_col;   HANDLE_CUDA_ERROR( cudaMalloc( &d_col,   matK1.lenVC                 * sizeof(UIN) ) ); TEST_POINTER( d_col   );
-	UIN * d_nmc;   HANDLE_CUDA_ERROR( cudaMalloc( &d_nmc,   matK1.chunkNum              * sizeof(UIN) ) ); TEST_POINTER( d_nmc   );
-	UIN * d_chp;   HANDLE_CUDA_ERROR( cudaMalloc( &d_chp,   matK1.chunkNum              * sizeof(UIN) ) ); TEST_POINTER( d_chp   );
-	UIN * d_permi; HANDLE_CUDA_ERROR( cudaMalloc( &d_permi, matK1.chunkNum * CHUNK_SIZE * sizeof(UIN) ) ); TEST_POINTER( d_permi );
-	FPT * d_vec;   HANDLE_CUDA_ERROR( cudaMalloc( &d_vec,   matK1.nrows                 * sizeof(FPT) ) ); TEST_POINTER( d_vec   );
-	FPT * d_res;   HANDLE_CUDA_ERROR( cudaMalloc( &d_res,   matK1.nrows                 * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_val,   matK1.val,   matK1.lenVC                 * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_col,   matK1.col,   matK1.lenVC                 * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_nmc,   matK1.nmc,   matK1.chunkNum              * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_chp,   matK1.chp,   matK1.chunkNum              * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_permi, matK1.permi, matK1.chunkNum * CHUNK_SIZE * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_vec,   vec,         matK1.nrows                 * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gk1 <<<cudaBlockNum, cudaBlockSize>>> (  matK1.nrows, d_val, d_col, d_nmc, d_chp, d_permi, d_vec, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matK1.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matK1.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_val   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_col   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_nmc   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_chp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_permi ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_vec   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	str_res sr;
-	strcpy( sr.name, "gk1" );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matK1.nnz ) ) / sr.et;
-	get_errors( matK1.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, const FPT * ref );
 
-
-
-typedef struct { UIN nrows; UIN nnz; UIN hbs; UIN lenAX; UIN lenBRP; UIN lenMAPX; FPT * ax; UIN * brp; UIN * mapx; } str_matAXC;
-
-
+str_res test_gk1( const UIN cudaBlockSize, const str_matK1 matK1, const FPT * vec, const FPT * ref );
 
 static UIN get_brpAXC( const str_matCSR matCSR, str_matAXC * matAXC )
 {
@@ -817,56 +526,7 @@ static str_formatData getFormatDataAXC( const UIN ompNT, const UIN hbs, const st
 	return( fd );
 }
 
-static __host__ str_res test_gaxc( const UIN cudaBlockSize, const str_matAXC matAXC, const FPT * ref )
-{
-	// 
-	const UIN cudaBlockNum = ( (matAXC.nrows * 32) + cudaBlockSize - 1 ) / cudaBlockSize;
-	// allocate memory on GPU
-	FPT * d_ax;    HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,    matAXC.lenAX                * sizeof(FPT) ) ); TEST_POINTER( d_ax    );
-	UIN * d_brp;   HANDLE_CUDA_ERROR( cudaMalloc( &d_brp,   matAXC.lenBRP               * sizeof(UIN) ) ); TEST_POINTER( d_brp   );
-	FPT * d_res;   HANDLE_CUDA_ERROR( cudaMalloc( &d_res,   matAXC.nrows                * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, matAXC.lenAX  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_brp, 0, matAXC.lenBRP * sizeof(UIN) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXC.nrows  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,    matAXC.ax,    matAXC.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_brp,   matAXC.brp,   matAXC.lenBRP * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gaxc <<<cudaBlockNum, cudaBlockSize>>> ( matAXC.nrows, d_ax, d_brp, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matAXC.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXC.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_ax    ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_brp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	str_res sr;
-	strcpy( sr.name, "gaxc" );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matAXC.nnz ) ) / sr.et;
-	get_errors( matAXC.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gaxc( const UIN cudaBlockSize, const str_matAXC matAXC, const FPT * ref );
 
 static void getArraysLenAXT_UNC_H1( const str_matCSR matCSR, str_matAXT * matAXT )
 {
@@ -1278,344 +938,17 @@ static str_formatData getFormatDataAXT( const UIN ompNT, const UIN bs, const UIN
 	return( fd );
 }
 
-static __host__ str_res test_gaxtuh1hw16w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
-{
-	                                                                     // wpw - workload per warp
-	const UIN thw          = matAXT.tileHW;                              // tile half width
-	const UIN tpw          = wpw / (2 * thw);                            // tiles per warp
-	const UIN tn           = ( ( matAXT.tileN + tpw - 1 ) / tpw ) * tpw; // number of tiles rounded to a multiple of tpw
-	const UIN wn           = tn / tpw;                                   // number of warps needed
-	const UIN wpb          = cbs / 32;                                   // warps per cuda block
-	const UIN cbn          = ( wn + wpb - 1 ) / wpb;                     // number of cuda blocks needed
-	const UIN devLenAX     = cbn * wpb * tpw * 2 * thw;                  // lenAX for device
-	const UIN devLenSEC    = cbn * wpb * tpw;                            // lenSEC for device
-	// allocate memory on GPU
-	FPT * d_ax;  HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,    devLenAX     * sizeof(FPT) ) ); TEST_POINTER( d_ax    );
-	UIN * d_rwp; HANDLE_CUDA_ERROR( cudaMalloc( &d_rwp,   devLenSEC    * sizeof(UIN) ) ); TEST_POINTER( d_rwp   );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res,   matAXT.nrows * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, devLenAX  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_rwp, 0, devLenSEC * sizeof(UIN) ) );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,  matAXT.ax,  matAXT.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_rwp, matAXT.sec, matAXT.lenSEC * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXT.nrows  * sizeof(FPT) ) );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gaxtuh1hw16w <<<cbn, cbs>>> ( tpw, tn, d_ax, d_rwp, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matAXT.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXT.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_ax    ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_rwp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	char WPW[6]; sprintf( WPW, "%d", wpw );
-	char buffer[48];
-	strcpy( buffer, "gaxtuh1hw16w" );
-	strcat( buffer, WPW );
-	str_res sr;
-	strcpy( sr.name, buffer );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matAXT.nnz ) ) / sr.et;
-	get_errors( matAXT.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gaxtuh1hw16w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref );
 
-static __host__ str_res test_gaxtuh1hw08w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
-{
-	                                                                     // wpw - workload per warp
-	const UIN thw          = matAXT.tileHW;                              // tile half width
-	const UIN tpw          = wpw / (2 * thw);                            // tiles per warp
-	const UIN tn           = ( ( matAXT.tileN + tpw - 1 ) / tpw ) * tpw; // number of tiles rounded to a multiple of tpw
-	const UIN wn           = tn / tpw;                                   // number of warps needed
-	const UIN wpb          = cbs / 32;                                   // warps per cuda block
-	const UIN cbn          = ( wn + wpb - 1 ) / wpb;                     // number of cuda blocks needed
-	const UIN devLenAX     = cbn * wpb * tpw * 2 * thw;                  // lenAX for device
-	const UIN devLenSEC    = cbn * wpb * tpw;                            // lenSEC for device
-	// allocate memory on GPU
-	FPT * d_ax;  HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,    devLenAX     * sizeof(FPT) ) ); TEST_POINTER( d_ax    );
-	UIN * d_rwp; HANDLE_CUDA_ERROR( cudaMalloc( &d_rwp,   devLenSEC    * sizeof(UIN) ) ); TEST_POINTER( d_rwp   );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res,   matAXT.nrows * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, devLenAX  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_rwp, 0, devLenSEC * sizeof(UIN) ) );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,    matAXT.ax,    matAXT.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_rwp,   matAXT.sec,   matAXT.lenSEC * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXT.nrows  * sizeof(FPT) ) );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gaxtuh1hw08w <<<cbn, cbs>>> ( tpw, tn, d_ax, d_rwp, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matAXT.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXT.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_ax    ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_rwp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	char WPW[6]; sprintf( WPW, "%d", wpw );
-	char buffer[48];
-	strcpy( buffer, "gaxtuh1hw08w" );
-	strcat( buffer, WPW );
-	str_res sr;
-	strcpy( sr.name, buffer );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matAXT.nnz ) ) / sr.et;
-	get_errors( matAXT.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gaxtuh1hw08w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref );
 
-static __host__ str_res test_gaxtuh1hw04w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
-{
-	                                                                     // wpw - workload per warp
-	const UIN thw          = matAXT.tileHW;                              // tile half width
-	const UIN tpw          = wpw / (2 * thw);                            // tiles per warp
-	const UIN tn           = ( ( matAXT.tileN + tpw - 1 ) / tpw ) * tpw; // number of tiles rounded to a multiple of tpw
-	const UIN wn           = tn / tpw;                                   // number of warps needed
-	const UIN wpb          = cbs / 32;                                   // warps per cuda block
-	const UIN cbn          = ( wn + wpb - 1 ) / wpb;                     // number of cuda blocks needed
-	const UIN devLenAX     = cbn * wpb * tpw * 2 * thw;                  // lenAX for device
-	const UIN devLenSEC    = cbn * wpb * tpw;                            // lenSEC for device
-	// allocate memory on GPU
-	FPT * d_ax;  HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,    devLenAX     * sizeof(FPT) ) ); TEST_POINTER( d_ax    );
-	UIN * d_rwp; HANDLE_CUDA_ERROR( cudaMalloc( &d_rwp,   devLenSEC    * sizeof(UIN) ) ); TEST_POINTER( d_rwp   );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res,   matAXT.nrows * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, devLenAX  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_rwp, 0, devLenSEC * sizeof(UIN) ) );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,    matAXT.ax,    matAXT.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_rwp,   matAXT.sec,   matAXT.lenSEC * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXT.nrows  * sizeof(FPT) ) );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gaxtuh1hw04w <<<cbn, cbs>>> ( tpw, tn, d_ax, d_rwp, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matAXT.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXT.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_ax    ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_rwp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	char WPW[6]; sprintf( WPW, "%d", wpw );
-	char buffer[48];
-	strcpy( buffer, "gaxtuh1hw04w" );
-	strcat( buffer, WPW );
-	str_res sr;
-	strcpy( sr.name, buffer );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matAXT.nnz ) ) / sr.et;
-	get_errors( matAXT.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gaxtuh1hw04w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref );
 
-static __host__ str_res test_gaxtuh( const UIN tpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
-{
-	                                                                     // tpw - tiles per warp
-	const UIN th           = matAXT.tileH;                               // tile's height
-	const UIN thw          = matAXT.tileHW;                              // tile's half width
-	const UIN tn           = ( ( matAXT.tileN + tpw - 1 ) / tpw ) * tpw; // number of tiles rounded to a multiple of tpw
-	const UIN wn           = tn / tpw;                                   // number of warps needed
-	const UIN wpb          = cbs / 32;                                   // warps per cuda block
-	const UIN cbn          = ( wn + wpb - 1 ) / wpb;                     // number of cuda blocks needed
-	const UIN devLenAX     = cbn * wpb * tpw * 2 * th * thw;             // lenAX for device
-	const UIN devLenSEC    = cbn * wpb * tpw * thw;                      // lenSEC for device
-//printf( "tpw      : %d\n", tpw           );
-//printf( "th       : %d\n", th            );
-//printf( "thw      : %d\n", thw           );
-//printf( "tn       : %d\n", tn            );
-//printf( "wn       : %d\n", wn            );
-//printf( "wpb      : %d\n", wpb           );
-//printf( "cbn      : %d\n", cbn           );
-//printf( "lenAX    : %d\n", matAXT.lenAX  );
-//printf( "devLenAX : %d\n", devLenAX      );
-//printf( "lenSEC   : %d\n", matAXT.lenSEC );
-//printf( "devLenSEC: %d\n", devLenSEC     );
-	// allocate memory on GPU
-	FPT * d_ax;  HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,  devLenAX     * sizeof(FPT) ) ); TEST_POINTER( d_ax    );
-	UIN * d_rwp; HANDLE_CUDA_ERROR( cudaMalloc( &d_rwp, devLenSEC    * sizeof(UIN) ) ); TEST_POINTER( d_rwp   );
-	FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res, matAXT.nrows * sizeof(FPT) ) ); TEST_POINTER( d_res   );
-	HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, devLenAX  * sizeof(FPT) ) );
-	HANDLE_CUDA_ERROR( cudaMemset( d_rwp, 0, devLenSEC * sizeof(UIN) ) );
-	// copy necessary arrays to device
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,  matAXT.ax,  matAXT.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-	HANDLE_CUDA_ERROR( cudaMemcpy( d_rwp, matAXT.sec, matAXT.lenSEC * sizeof(UIN), cudaMemcpyHostToDevice ) );
-	// create events for time measuring
-	cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-	cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-	// timed iterations
-	float ti = 0.0f, tt = 0.0f;
-	UIN i;
-	for ( i = 0; i < NUM_ITE; i++ )
-	{
-		HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXT.nrows  * sizeof(FPT) ) );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-		gaxtuh <<<cbn, cbs>>> ( tpw, tn, th, d_ax, d_rwp, d_res );
-		HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-		HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-		tt = tt + ti;
-	}
-	// destroy events for time measuring
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-	HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-	// copy result from device
-	FPT * res = (FPT *) malloc( matAXT.nrows * sizeof(FPT) ); TEST_POINTER( res );
-	HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXT.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-	// free device memory
-	HANDLE_CUDA_ERROR( cudaFree( d_ax    ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_rwp   ) );
-	HANDLE_CUDA_ERROR( cudaFree( d_res   ) );
-	// store results
-	char TH[5];  sprintf( TH,  "%d", th );
-	char TPW[5]; sprintf( TPW, "%d", tpw );
-	char buffer[48];
-	strcpy( buffer, "gaxtuh" );
-	strcat( buffer, TH );
-	strcat( buffer, "tpw" );
-	strcat( buffer, TPW );
-	str_res sr;
-	strcpy( sr.name, buffer );
-	sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-	sr.ot    = 0.0;
-	sr.flops = ( 2.0 * ( (double) matAXT.nnz ) ) / sr.et;
-	get_errors( matAXT.nrows, ref, res, &(sr.sErr) );
-	// free cpu memory
-	free( res );
-	return( sr );
-}
+str_res test_gaxtuh( const UIN tpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref );
 
-static __host__ str_res test_gaxtch1( const UIN cudaBlockSize, const str_matAXT matAXT, const FPT * ref )
-{
-	char BS[5]; sprintf( BS, "%d", matAXT.bs );
-	char buffer[48];
-	strcpy( buffer, "gaxtch1bs" );
-	strcat( buffer, BS );
-	str_res sr;
-	strcpy( sr.name, buffer );
-	if ( ( (strcmp(matAXT.name, "M24_circuit5M.bin") == 0) && (cudaBlockSize == 1024) ) || ( (strcmp(matAXT.name, "M23_delaunay_n23.bin") == 0) && (cudaBlockSize == 1024) ) )
-	{
-		sr.et        = 0.0;
-		sr.ot        = 0.0;
-		sr.flops     = 0.0;
-		sr.sErr.aErr = 0.0;
-		sr.sErr.rErr = 0.0;
-		sr.sErr.pos  = 0;
-	}
-	else
-	{
-		// 
-		const UIN tn           = matAXT.tileN;
-		const UIN log          = matAXT.log;
-		const UIN cudaBlockNum = ( (tn*32) + cudaBlockSize - 1 ) / cudaBlockSize;
-		const UIN devLenAX     = cudaBlockNum * 2 * cudaBlockSize;
-		const UIN devLenSEC    = cudaBlockNum     * cudaBlockSize;
-		// allocate memory on GPU
-		FPT * d_ax;  HANDLE_CUDA_ERROR( cudaMalloc( &d_ax,  devLenAX      * sizeof(FPT) ) ); TEST_POINTER( d_ax  );
-		UIN * d_hdr; HANDLE_CUDA_ERROR( cudaMalloc( &d_hdr, devLenSEC     * sizeof(UIN) ) ); TEST_POINTER( d_hdr );
-		FPT * d_res; HANDLE_CUDA_ERROR( cudaMalloc( &d_res, matAXT.nrows  * sizeof(FPT) ) ); TEST_POINTER( d_res );
-		// copy necessary arrays to device
-		HANDLE_CUDA_ERROR( cudaMemset( d_ax,  0, devLenAX  * sizeof(FPT) ) );
-		HANDLE_CUDA_ERROR( cudaMemset( d_hdr, 0, devLenSEC * sizeof(UIN) ) );
-		HANDLE_CUDA_ERROR( cudaMemcpy( d_ax,  matAXT.ax,  matAXT.lenAX  * sizeof(FPT), cudaMemcpyHostToDevice ) );
-		HANDLE_CUDA_ERROR( cudaMemcpy( d_hdr, matAXT.sec, matAXT.lenSEC * sizeof(UIN), cudaMemcpyHostToDevice ) );
-		// create events for time measuring
-		cudaEvent_t cet1; HANDLE_CUDA_ERROR( cudaEventCreate( &cet1 ) );
-		cudaEvent_t cet2; HANDLE_CUDA_ERROR( cudaEventCreate( &cet2 ) );
-		// timed iterations
-		float ti = 0.0f, tt = 0.0f;
-		UIN i;
-		for ( i = 0; i < NUM_ITE; i++ )
-		{
-			HANDLE_CUDA_ERROR( cudaMemset( d_res, 0, matAXT.nrows  * sizeof(FPT) ) );
-			HANDLE_CUDA_ERROR( cudaEventRecord( cet1 ) );
-			gaxtch1 <<<cudaBlockNum, cudaBlockSize, (cudaBlockSize * sizeof(FPT))>>> ( log, d_ax, d_hdr, d_res );
-			HANDLE_CUDA_ERROR( cudaEventRecord( cet2 ) );
-			HANDLE_CUDA_ERROR( cudaEventSynchronize( cet2 ) );
-			HANDLE_CUDA_ERROR( cudaEventElapsedTime( &ti, cet1, cet2 ) );
-			tt = tt + ti;
-		}
-		// destroy events for time measuring
-		HANDLE_CUDA_ERROR( cudaEventDestroy( cet1 ) );
-		HANDLE_CUDA_ERROR( cudaEventDestroy( cet2 ) );
-		// copy result from device
-		FPT * res = (FPT *) malloc( matAXT.nrows * sizeof(FPT) ); TEST_POINTER( res );
-		HANDLE_CUDA_ERROR( cudaMemcpy( res, d_res, matAXT.nrows * sizeof(FPT), cudaMemcpyDeviceToHost ) );
-		// free device memory
-		HANDLE_CUDA_ERROR( cudaFree( d_ax  ) );
-		HANDLE_CUDA_ERROR( cudaFree( d_hdr ) );
-		HANDLE_CUDA_ERROR( cudaFree( d_res ) );
-		// store results
-		sr.et    = ( (double) tt / (double) NUM_ITE ) * 1e-3;
-		sr.ot    = 0.0;
-		sr.flops = ( 2.0 * ( (double) matAXT.nnz ) ) / sr.et;
-		get_errors( matAXT.nrows, ref, res, &(sr.sErr) );
-		// free cpu memory
-		free( res );
-	}
-	return( sr );
-}
+str_res test_gaxtch1( const UIN cudaBlockSize, const str_matAXT matAXT, const FPT * ref );
 
 str_res test_gaxtch( const UIN cudaBlockSize, const str_matAXT matAXT, const FPT * ref );
-
-#endif
-
-
 
 int main( int argc, char ** argv )
 {
@@ -1804,6 +1137,4 @@ int main( int argc, char ** argv )
 
 	return( EXIT_SUCCESS );
 }
-
-
 
