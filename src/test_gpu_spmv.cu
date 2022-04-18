@@ -317,24 +317,6 @@ static str_res test_ncsr( const UIN ompNT, const str_matCSR matCSR, const FPT * 
 	return( sr );
 }
 
-
-
-static __global__ void gcsr( const UIN nrows, const FPT * val, const UIN * col, const UIN * row, const FPT * x, FPT * y )
-{
-	const UIN rowID = blockIdx.x * blockDim.x + threadIdx.x;
-	if ( rowID < nrows )
-	{
-		UIN i;
-		FPT aux = 0.0;
-		for ( i = row[rowID]; i < row[rowID + 1]; i++ )
-			aux = aux + val[i] * x[col[i]];
-		y[rowID] = aux;
-	}
-	return;
-}
-
-
-
 static __host__ str_res test_gcsr( const UIN cudaBlockSize, const str_matCSR matCSR, const FPT * vec, const FPT * ref )
 {
 	// get parameters
@@ -642,29 +624,6 @@ static str_formatData getFormatDataK1( const UIN blockSize, const str_matCSR mat
 	return( fd );
 }
 
-
-
-
-static __global__ void gk1( const int NROWS, const FPT * val, const UIN * col, const UIN * nmc, const UIN * chp, const UIN * permi, const FPT * x, FPT * y )
-{
-	const UIN gid = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN lid = threadIdx.x;
-	const UIN cid = gid / CHUNK_SIZE;
-	const UIN wid = lid & ( CHUNK_SIZE - 1 );
-	if ( gid < NROWS )
-	{
-		UIN to = chp[cid] + wid;
-		UIN ul = nmc[cid] * CHUNK_SIZE + to;
-		FPT sum = val[to] * x[col[to]];
-		for ( to = ( to + CHUNK_SIZE ); to < ul; to = ( to + CHUNK_SIZE ) )
-			sum = sum + val[to] * x[col[to]];
-		y[permi[gid]] = sum;
-	}
-	return;
-}
-
-
-
 static __host__ str_res test_gk1( const UIN cudaBlockSize, const str_matK1 matK1, const FPT * vec, const FPT * ref )
 {
 	// 
@@ -857,42 +816,6 @@ static str_formatData getFormatDataAXC( const UIN ompNT, const UIN hbs, const st
 	fd.ct = tc;
 	return( fd );
 }
-
-
-
-#ifndef FULL_MASK
-	#define FULL_MASK 0xffffffff
-#endif
-
-
-
-static __global__ void gaxc( const UIN NROWS, const FPT * ax, const UIN * brp, FPT * y )
-{
-	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN widGRID = tidGRID >> 5;
-	if ( widGRID < NROWS )
-	{
-		const UIN tidWARP = tidGRID & 31;
-		const UIN p1      = brp[widGRID]   + tidWARP;
-		const UIN p2      = brp[widGRID+1] + tidWARP;
-		      UIN pAX;
-		      FPT val = 0.0, red = 0.0;
-		for ( pAX = p1; pAX < p2; pAX = pAX + 64 )
-		{
-			val = ax[pAX] * ax[pAX+32];
-			val = val + __shfl_down_sync( FULL_MASK, val, 16 );
-			val = val + __shfl_down_sync( FULL_MASK, val,  8 );
-			val = val + __shfl_down_sync( FULL_MASK, val,  4 );
-			val = val + __shfl_down_sync( FULL_MASK, val,  2 );
-			val = val + __shfl_down_sync( FULL_MASK, val,  1 );
-			red = red + val;
-		}
-		if (tidWARP == 0) y[widGRID] = red;
-	}
-	return;
-}
-
-
 
 static __host__ str_res test_gaxc( const UIN cudaBlockSize, const str_matAXC matAXC, const FPT * ref )
 {
@@ -1355,41 +1278,6 @@ static str_formatData getFormatDataAXT( const UIN ompNT, const UIN bs, const UIN
 	return( fd );
 }
 
-
-
-static __global__ void gaxtuh1hw16w( const UIN TPW, const UIN TN, const FPT * ax, const UIN * rwp, FPT * y )
-{
-	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN tidWARP = tidGRID & 31;
-	const UIN ll      = (tidGRID >> 5) * TPW;
-	const UIN ul      = ll + TPW;
-	      UIN t1, t2, r1, r2, p_ax1, p_ax2;
-	      FPT v0, v1, v2;
-	for ( t1 = ll; t1 < ul; t1 = t1 + 2 )
-	{
-		t2    = t1 + 1;
-		r1    = rwp[t1];
-		r2    = rwp[t2];
-		p_ax1 = t1 * 32 + tidWARP;
-		p_ax2 = t2 * 32 + tidWARP;
-		v1    = ax[p_ax1];
-		v1    = v1 * __shfl_down_sync( FULL_MASK, v1, 16 );
-		v2    = ax[p_ax2];
-		v2    = v2 * __shfl_up_sync  ( FULL_MASK, v2, 16 );
-		if (tidWARP < 16) v0 = v1;
-		else              v0 = v2;
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 8  );
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 4  );
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 2  );
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 1  );
-		     if (tidWARP ==  0) atomicAdd( &y[r1], v0 );
-		else if (tidWARP == 16) atomicAdd( &y[r2], v0 );
-	}
-	return;
-}
-
-
-
 static __host__ str_res test_gaxtuh1hw16w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
 {
 	                                                                     // wpw - workload per warp
@@ -1451,55 +1339,6 @@ static __host__ str_res test_gaxtuh1hw16w( const UIN wpw, const UIN cbs, const s
 	free( res );
 	return( sr );
 }
-
-
-
-static __global__ void gaxtuh1hw08w( const UIN TPW, const UIN TN, const FPT * ax, const UIN * rwp, FPT * y )
-{
-	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN tidWARP = tidGRID & 31;
-	const UIN tid16   = tidGRID & 15;
-	const UIN ll      = (tidGRID >> 5) * TPW;
-	const UIN ul      = ll + TPW;
-	      UIN t1, t2, t3, t4, r1, r2, r3, r4, p_ax1, p_ax2, p_ax3, p_ax4;
-	      FPT v0, v1, v2, v3, v4;
-	for ( t1 = ll; t1 < ul; t1 = t1 + 4 )
-	{
-		t2    = t1 + 1;
-		t3    = t1 + 2;
-		t4    = t1 + 3;
-		r1    = rwp[t1];
-		r2    = rwp[t2];
-		r3    = rwp[t3];
-		r4    = rwp[t4];
-		p_ax1 = t1 * 16 + tid16;
-		p_ax2 = t2 * 16 + tid16;
-		p_ax3 = t3 * 16 + tid16;
-		p_ax4 = t4 * 16 + tid16;
-		v1    = ax[p_ax1];
-		v1    = v1 * __shfl_down_sync( FULL_MASK, v1, 8 );
-		v2    = ax[p_ax2];
-		v2    = v2 * __shfl_up_sync  ( FULL_MASK, v2, 8 );
-		v3    = ax[p_ax3];
-		v3    = v3 * __shfl_up_sync  ( FULL_MASK, v3, 8 );
-		v4    = ax[p_ax4];
-		v4    = v4 * __shfl_up_sync  ( FULL_MASK, v4, 8 );
-		     if                      (tidWARP <  8)   v0 = v1;
-		else if ( (tidWARP >=  8) && (tidWARP < 16) ) v0 = v2;
-		else if ( (tidWARP >= 16) && (tidWARP < 24) ) v0 = v3;
-		else                                          v0 = v4;
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 4  );
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 2  );
-		v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 1  );
-		     if (tidWARP ==  0) atomicAdd( &y[r1], v0 );
-		else if (tidWARP ==  8) atomicAdd( &y[r2], v0 );
-		else if (tidWARP == 16) atomicAdd( &y[r3], v0 );
-		else if (tidWARP == 24) atomicAdd( &y[r4], v0 );
-	}
-	return;
-}
-
-
 
 static __host__ str_res test_gaxtuh1hw08w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
 {
@@ -1563,84 +1402,6 @@ static __host__ str_res test_gaxtuh1hw08w( const UIN wpw, const UIN cbs, const s
 	return( sr );
 }
 
-
-
-static __global__ void gaxtuh1hw04w( const UIN TPW, const UIN TN, const FPT * ax, const UIN * rwp, FPT * y )
-{
-	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN tidWARP = tidGRID & 31;
-	const UIN tid8    = tidGRID &  7;
-	const UIN ll      = (tidGRID >> 5) * TPW;
-	const UIN ul      = ll + TPW;
-	      UIN t1, t2, t3, t4, t5, t6, t7, t8;
-	      UIN r1, r2, r3, r4, r5, r6, r7, r8;
-	      UIN p_ax1, p_ax2, p_ax3, p_ax4, p_ax5, p_ax6, p_ax7, p_ax8;
-	      FPT v0, v1, v2, v3, v4, v5, v6, v7, v8;
-	for ( t1 = ll; t1 < ul; t1 = t1 + 8 )
-	{
-		t2    = t1 + 1;
-		t3    = t1 + 2;
-		t4    = t1 + 3;
-		t5    = t1 + 4;
-		t6    = t1 + 5;
-		t7    = t1 + 6;
-		t8    = t1 + 7;
-		r1    = rwp[t1];
-		r2    = rwp[t2];
-		r3    = rwp[t3];
-		r4    = rwp[t4];
-		r5    = rwp[t5];
-		r6    = rwp[t6];
-		r7    = rwp[t7];
-		r8    = rwp[t8];
-		p_ax1 = t1 * 8 + tid8;
-		p_ax2 = t2 * 8 + tid8;
-		p_ax3 = t3 * 8 + tid8;
-		p_ax4 = t4 * 8 + tid8;
-		p_ax5 = t5 * 8 + tid8;
-		p_ax6 = t6 * 8 + tid8;
-		p_ax7 = t7 * 8 + tid8;
-		p_ax8 = t8 * 8 + tid8;
-		v1    = ax[p_ax1];
-		v1    = v1 * __shfl_down_sync( FULL_MASK, v1, 4 );
-		v2    = ax[p_ax2];
-		v2    = v2 * __shfl_up_sync  ( FULL_MASK, v2, 4 );
-		v3    = ax[p_ax3];
-		v3    = v3 * __shfl_up_sync  ( FULL_MASK, v3, 4 );
-		v4    = ax[p_ax4];
-		v4    = v4 * __shfl_up_sync  ( FULL_MASK, v4, 4 );
-		v5    = ax[p_ax5];
-		v5    = v5 * __shfl_up_sync  ( FULL_MASK, v5, 4 );
-		v6    = ax[p_ax6];
-		v6    = v6 * __shfl_up_sync  ( FULL_MASK, v6, 4 );
-		v7    = ax[p_ax7];
-		v7    = v7 * __shfl_up_sync  ( FULL_MASK, v7, 4 );
-		v8    = ax[p_ax8];
-		v8    = v8 * __shfl_up_sync  ( FULL_MASK, v8, 4 );
-		     if                      (tidWARP <  4)   v0 = v1;
-		else if ( (tidWARP >=  4) && (tidWARP <  8) ) v0 = v2;
-		else if ( (tidWARP >=  8) && (tidWARP < 12) ) v0 = v3;
-		else if ( (tidWARP >= 12) && (tidWARP < 16) ) v0 = v4;
-		else if ( (tidWARP >= 16) && (tidWARP < 20) ) v0 = v5;
-		else if ( (tidWARP >= 20) && (tidWARP < 24) ) v0 = v6;
-		else if ( (tidWARP >= 24) && (tidWARP < 28) ) v0 = v7;
-		else                                          v0 = v8;
-		    v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 2  );
-		    v0    = v0 + __shfl_down_sync( FULL_MASK, v0, 1  );
-		     if (tidWARP ==  0) atomicAdd( &y[r1], v0 );
-		else if (tidWARP ==  4) atomicAdd( &y[r2], v0 );
-		else if (tidWARP ==  8) atomicAdd( &y[r3], v0 );
-		else if (tidWARP == 12) atomicAdd( &y[r4], v0 );
-		else if (tidWARP == 16) atomicAdd( &y[r5], v0 );
-		else if (tidWARP == 20) atomicAdd( &y[r6], v0 );
-		else if (tidWARP == 24) atomicAdd( &y[r7], v0 );
-		else if (tidWARP == 28) atomicAdd( &y[r8], v0 );
-	}
-	return;
-}
-
-
-
 static __host__ str_res test_gaxtuh1hw04w( const UIN wpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
 {
 	                                                                     // wpw - workload per warp
@@ -1702,53 +1463,6 @@ static __host__ str_res test_gaxtuh1hw04w( const UIN wpw, const UIN cbs, const s
 	free( res );
 	return( sr );
 }
-
-
-
-//static __global__ void gaxtuh( const UIN TN, const UIN TH, const FPT * ax, const UIN * rwp, FPT * y )
-//{
-//	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-//	const UIN widGRID = tidGRID >> 5;
-//	if ( widGRID < TN )
-//	{
-//		const UIN tidWARP = tidGRID & 31;
-//		const UIN rid     = rwp[widGRID*32 + tidWARP];
-//		const UIN p1      = widGRID * TH * 64 + tidWARP;
-//		const UIN p2      = p1 + TH * 64;
-//		      UIN pAX     = p1;
-//		      FPT val     = ax[pAX] * ax[pAX+32];
-//		for ( pAX = pAX + 64; pAX < p2; pAX = pAX + 64 )
-//			val = val + ax[pAX] * ax[pAX+32];
-//		atomicAdd( &y[rid], val );
-//	}
-//	return;
-//}
-
-
-
-static __global__ void gaxtuh( const UIN TPW, const UIN TN, const UIN TH, const FPT * ax, const UIN * rwp, FPT * y )
-{
-	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
-	const UIN tidWARP = tidGRID & 31;
-	const UIN widGRID = (tidGRID >> 5);
-	const UIN ll      = widGRID * TPW;
-	const UIN ul      = ll + TPW;
-	      UIN t, p1, p2, p_ax, r;
-	      FPT val;
-	for ( t = ll; t < ul; t++ )
-	{
-		p1  = t * TH * 64 + tidWARP;
-		p2  = p1 + TH * 64;
-		val = 0.0;
-		for ( p_ax = p1; p_ax < p2; p_ax = p_ax + 64 )
-			val = val + ax[p_ax] * ax[p_ax+32];
-		r = rwp[t*32 + tidWARP];
-		atomicAdd( &y[r], val );
-	}
-	return;
-}
-
-
 
 static __host__ str_res test_gaxtuh( const UIN tpw, const UIN cbs, const str_matAXT matAXT, const FPT * ref )
 {
@@ -1825,68 +1539,6 @@ static __host__ str_res test_gaxtuh( const UIN tpw, const UIN cbs, const str_mat
 	free( res );
 	return( sr );
 }
-
-
-
-static __global__ void gaxtch1( const UIN LOG, const FPT * ax, const UIN * hdr, FPT * y )
-{
-	const UIN tidBLCK = threadIdx.x;
-	const UIN widBLCK = tidBLCK >> 5;
-	const UIN tidWARP = tidBLCK & 31;
-	const UIN pAX     = blockIdx.x * 2 * blockDim.x + widBLCK * 64 + tidWARP;
-	const UIN ro      = hdr[blockIdx.x * blockDim.x + tidBLCK];
-	      UIN r, o, i;
-	       __shared__ FPT blk1[32];
-	extern __shared__ FPT blk2[];
-	      FPT vo = 0.0, v1 = 0.0, v2 = 0.0, v3 = 0.0;
-	// initialize auxiliary arrays
-	blk1[tidWARP] = 0.0;
-	blk2[tidBLCK] = 0.0;
-	__syncthreads();
-	// read values from global memory array ax[] and perform multiplication on registers
-	vo = ax[pAX] * ax[pAX+32];
-	v1 = vo;
-	__syncthreads();
-	// perform warp-level reduction in v1
-	for ( i = 1; i <=16; i = i * 2 )
-	{
-		v2 = __shfl_up_sync( FULL_MASK, v1, i );
-		if (tidWARP >= i) v1 = v1 + v2;
-	}
-	__syncthreads();
-	// store warp-level results on shared memory block blk1[]
-	if (tidWARP == 31) blk1[widBLCK] = v1;
-	__syncthreads();
-	// use block's warp 0 to perform the reduction of the partial results stored on sb[]
-	if (widBLCK == 0)
-	{
-		v2 = blk1[tidWARP];
-		for ( i = 1; i <=16; i = i * 2 )
-		{
-			v3 = __shfl_up_sync( FULL_MASK, v2, i );
-			if (tidWARP >= i) v2 = v2 + v3;
-		}
-		blk1[tidWARP] = v2;
-	}
-	__syncthreads();
-	// update v1 with partial reductions from block's warp 0
-	if (widBLCK > 0) v1 = v1 + blk1[widBLCK-1];
-	__syncthreads();
-	// write in blk2[] complete reduction values in v1
-	blk2[tidBLCK] = v1;
-	__syncthreads();
-	// perform atomic addition to acumulate value in y[]
-	if (ro)
-	{
-		r  = ro >> LOG;
-		o  = ro & (blockDim.x - 1);
-		v1 = blk2[tidBLCK + o] - v1 + vo;
-		atomicAdd( &y[r], v1 );
-	}
-	return;
-}
-
-
 
 static __host__ str_res test_gaxtch1( const UIN cudaBlockSize, const str_matAXT matAXT, const FPT * ref )
 {

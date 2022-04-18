@@ -7,7 +7,7 @@ option(USE_OPENMP "Use OpenMP" TRUE)
 
 find_package(CUDAToolkit REQUIRED)
 
-add_executable(test_gpu_spmv src/test_gpu_spmv.cu)
+add_executable(test_gpu_spmv src/test_gpu_spmv.cu src/test_gaxtch.cu)
 target_include_directories(test_gpu_spmv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(test_gpu_spmv PRIVATE CUDA::cusparse)
 

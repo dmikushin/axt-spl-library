@@ -1,10 +1,10 @@
-#ifndef GATXCH_H
-#define GATXCH_H
+#ifndef LIBAXT_GATXCH_H
+#define LIBAXT_GATXCH_H
 
 #include "defines.h"
 #include "axt.h"
 
-static __global__ void gaxtch( const UIN LOG, const UIN TH, const FPT * ax, const UIN * hdr, FPT * y )
+__global__ void gaxtch( const UIN LOG, const UIN TH, const FPT * ax, const UIN * hdr, FPT * y )
 {
 	const UIN tidGRID = blockIdx.x * blockDim.x + threadIdx.x;
 	const UIN widGRID = tidGRID >> 5;
@@ -38,8 +38,7 @@ static __global__ void gaxtch( const UIN LOG, const UIN TH, const FPT * ax, cons
 			a2_ax  = a1_ax + o;
 		}
 	} while (p_ax < ul_ax);
-	return;
 }
 
-#endif // GATXCH_H
+#endif // LIBAXT_GATXCH_H
 
