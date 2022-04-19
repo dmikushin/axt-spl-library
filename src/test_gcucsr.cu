@@ -55,7 +55,7 @@ str_res test_gcucsr( const str_matCSR matCSR, const FPT * vec, const FPT * ref )
         // create handlers for cuSPARSE
         HANDLE_CUSPARSE_ERROR( cusparseCreate(&cusparseH) );
         HANDLE_CUSPARSE_ERROR( cusparseCreateCsr(&cusparseMD, matCSR.nrows, matCSR.nrows, matCSR.nnz,
-                                      (void *)d_val, (void *)d_col, (void *)d_row,
+                                      (void *)d_row, (void *)d_col, (void *)d_val,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, cudaDT ));
         HANDLE_CUSPARSE_ERROR( cusparseCreateDnVec(&cusparseVD1, matCSR.nrows, (void*)d_vec, cudaDT ));
