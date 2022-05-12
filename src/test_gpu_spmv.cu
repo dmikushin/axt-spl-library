@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <map>
 #include <math.h>
 #include <vector>
 
@@ -1085,10 +1086,19 @@ int main( int argc, char ** argv )
 	printf( "%25s %20.2lf %10.2lf %20.6lf\n", fd14.name, ( fd14.mfp * 1e-6 ), fd14.beta, fd14.ct ); fflush(stdout);
 	printf( "%25s %20.2lf %10.2lf %20.6lf\n", fd15.name, ( fd15.mfp * 1e-6 ), fd15.beta, fd15.ct ); fflush(stdout);
 
+	// Mark kernel with best performance with an asterisk.
+	std::map<double, str_res> sorted_res;
+	for (auto sr : srs)
+		sorted_res[sr.flops] = sr;
+	auto& best_res = sorted_res.rbegin()->second;
+	best_res.name[strlen(best_res.name) + 1] = '\0';
+       	best_res.name[strlen(best_res.name)] = '*';
+
 	HDL; printf( "SpMV kernels' results\n" ); HDL;
 	printf( "%25s %15s %8s %15s %13s %13s %10s\n", "kernel", "exeTime [s]", "Gflops", "ordTime [s]", "errAbs", "errRel", "rowInd" );
-	for (auto sr : srs)
+	for (auto i = sorted_res.rbegin(), e = sorted_res.rend(); i != e; i++)
 	{
+		const auto& sr = i->second;
 		printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n",
 			sr.name, sr.et, ( sr.flops * 1e-9 ), sr.ot,
 			sr.sErr.aErr, sr.sErr.rErr, sr.sErr.pos );
