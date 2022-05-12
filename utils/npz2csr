@@ -13,8 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('-o', required=True, type=str)
     args = parser.parse_args()
 
-    coo_mat = scipy.io.mmread(args.i)
-    csr_mat = coo_mat.tocsr(copy=True)
+    npz_mat = scipy.sparse.load_npz(args.i)
+    csr_mat = npz_mat.tocsr(copy=True)
 
     with open(args.o, 'w') as f:
         nrows = csr_mat.shape[0]
