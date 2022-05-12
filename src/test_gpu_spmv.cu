@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <vector>
 
 #include "defines.h"
 #include "diff.h"
@@ -973,20 +974,25 @@ int main( int argc, char ** argv )
 	init_vec( sia.ompMT, matCSR.nrows, vr );
 	FPT * yr = (FPT *) calloc( matCSR.nrows,  sizeof(FPT) ); TEST_POINTER( yr );
 	ncsr( sia.ompMT, matCSR, vr, yr );
+	
+	std::vector<str_res> srs;
+
+#define STR_RES(...) srs.push_back(__VA_ARGS__)
+	
 	// test CSR kernels
-	str_res sr01 = test_ncsr( sia.ompMT, matCSR, vr, yr );
-	str_res sr02 = test_gcsr( sia.cbs, matCSR, vr, yr );
-	str_res sr03 = test_gcucsr( matCSR, vr, yr );
+	STR_RES(test_ncsr( sia.ompMT, matCSR, vr, yr ));
+	STR_RES(test_gcsr( sia.cbs, matCSR, vr, yr ));
+	STR_RES(test_gcucsr( matCSR, vr, yr ));
 	// CSR format  ------------------------------------------------------------------------------------------------------------------
 
 	// K1 format  -------------------------------------------------------------------------------------------------------------------
 	str_matK1 matK1; str_formatData fd02 = getFormatDataK1( CHUNK_SIZE, matCSR, vr, &matK1 );
-	str_res sr04 = test_gk1( sia.cbs, matK1, vr, yr );
+	STR_RES(test_gk1( sia.cbs, matK1, vr, yr ));
 	// K1 format  -------------------------------------------------------------------------------------------------------------------
 
 	// AXC format  ------------------------------------------------------------------------------------------------------------------
 	str_matAXC matAXC; str_formatData fd03 = getFormatDataAXC( sia.ompMT, TILE_HW, matCSR, vr, &matAXC );
-	str_res sr05 = test_gaxc( sia.cbs, matAXC, yr );
+	STR_RES(test_gaxc( sia.cbs, matAXC, yr ));
 	// AXC format  ------------------------------------------------------------------------------------------------------------------
 
 	// AXT format  ------------------------------------------------------------------------------------------------------------------
@@ -1002,63 +1008,63 @@ int main( int argc, char ** argv )
 	str_matAXT matAXT10; str_formatData fd13 = getFormatDataAXT( sia.ompMT, sia.cbs, TILE_HW,  4, "COM", matCSR, vr, &matAXT10 );
 	str_matAXT matAXT11; str_formatData fd14 = getFormatDataAXT( sia.ompMT, sia.cbs, TILE_HW,  8, "COM", matCSR, vr, &matAXT11 );
 	str_matAXT matAXT12; str_formatData fd15 = getFormatDataAXT( sia.ompMT, sia.cbs, TILE_HW, 16, "COM", matCSR, vr, &matAXT12 );
-	str_res sr06 = test_gaxtuh1hw16w(  64, sia.cbs, matAXT01, yr );
-	str_res sr07 = test_gaxtuh1hw16w( 128, sia.cbs, matAXT01, yr );
-	str_res sr08 = test_gaxtuh1hw16w( 192, sia.cbs, matAXT01, yr );
-	str_res sr09 = test_gaxtuh1hw16w( 256, sia.cbs, matAXT01, yr );
-	str_res sr10 = test_gaxtuh1hw16w( 320, sia.cbs, matAXT01, yr );
-	str_res sr11 = test_gaxtuh1hw16w( 384, sia.cbs, matAXT01, yr );
-	str_res sr12 = test_gaxtuh1hw16w( 448, sia.cbs, matAXT01, yr );
-	str_res sr13 = test_gaxtuh1hw16w( 512, sia.cbs, matAXT01, yr );
+	STR_RES(test_gaxtuh1hw16w(  64, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 128, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 192, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 256, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 320, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 384, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 448, sia.cbs, matAXT01, yr ));
+	STR_RES(test_gaxtuh1hw16w( 512, sia.cbs, matAXT01, yr ));
 
-	str_res sr14 = test_gaxtuh1hw08w(  64, sia.cbs, matAXT02, yr );
-	str_res sr15 = test_gaxtuh1hw08w( 128, sia.cbs, matAXT02, yr );
-	str_res sr16 = test_gaxtuh1hw08w( 192, sia.cbs, matAXT02, yr );
-	str_res sr17 = test_gaxtuh1hw08w( 256, sia.cbs, matAXT02, yr );
-	str_res sr18 = test_gaxtuh1hw08w( 320, sia.cbs, matAXT02, yr );
-	str_res sr19 = test_gaxtuh1hw08w( 384, sia.cbs, matAXT02, yr );
-	str_res sr20 = test_gaxtuh1hw08w( 448, sia.cbs, matAXT02, yr );
-	str_res sr21 = test_gaxtuh1hw08w( 512, sia.cbs, matAXT02, yr );
+	STR_RES(test_gaxtuh1hw08w(  64, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 128, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 192, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 256, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 320, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 384, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 448, sia.cbs, matAXT02, yr ));
+	STR_RES(test_gaxtuh1hw08w( 512, sia.cbs, matAXT02, yr ));
 
-	str_res sr22 = test_gaxtuh1hw04w(  64, sia.cbs, matAXT03, yr );
-	str_res sr23 = test_gaxtuh1hw04w( 128, sia.cbs, matAXT03, yr );
-	str_res sr24 = test_gaxtuh1hw04w( 192, sia.cbs, matAXT03, yr );
-	str_res sr25 = test_gaxtuh1hw04w( 256, sia.cbs, matAXT03, yr );
-	str_res sr26 = test_gaxtuh1hw04w( 320, sia.cbs, matAXT03, yr );
-	str_res sr27 = test_gaxtuh1hw04w( 384, sia.cbs, matAXT03, yr );
-	str_res sr28 = test_gaxtuh1hw04w( 448, sia.cbs, matAXT03, yr );
-	str_res sr29 = test_gaxtuh1hw04w( 512, sia.cbs, matAXT03, yr );
+	STR_RES(test_gaxtuh1hw04w(  64, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 128, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 192, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 256, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 320, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 384, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 448, sia.cbs, matAXT03, yr ));
+	STR_RES(test_gaxtuh1hw04w( 512, sia.cbs, matAXT03, yr ));
 
-	str_res sr30 = test_gaxtuh     ( 1, sia.cbs, matAXT04, yr );
-	str_res sr31 = test_gaxtuh     ( 2, sia.cbs, matAXT04, yr );
-	str_res sr32 = test_gaxtuh     ( 3, sia.cbs, matAXT04, yr );
-	str_res sr33 = test_gaxtuh     ( 4, sia.cbs, matAXT04, yr );
+	STR_RES(test_gaxtuh     ( 1, sia.cbs, matAXT04, yr ));
+	STR_RES(test_gaxtuh     ( 2, sia.cbs, matAXT04, yr ));
+	STR_RES(test_gaxtuh     ( 3, sia.cbs, matAXT04, yr ));
+	STR_RES(test_gaxtuh     ( 4, sia.cbs, matAXT04, yr ));
 
-	str_res sr34 = test_gaxtuh     ( 1, sia.cbs, matAXT05, yr );
-	str_res sr35 = test_gaxtuh     ( 2, sia.cbs, matAXT05, yr );
-	str_res sr36 = test_gaxtuh     ( 3, sia.cbs, matAXT05, yr );
-	str_res sr37 = test_gaxtuh     ( 4, sia.cbs, matAXT05, yr );
+	STR_RES(test_gaxtuh     ( 1, sia.cbs, matAXT05, yr ));
+	STR_RES(test_gaxtuh     ( 2, sia.cbs, matAXT05, yr ));
+	STR_RES(test_gaxtuh     ( 3, sia.cbs, matAXT05, yr ));
+	STR_RES(test_gaxtuh     ( 4, sia.cbs, matAXT05, yr ));
 
-	str_res sr38 = test_gaxtuh     ( 1, sia.cbs, matAXT06, yr );
-	str_res sr39 = test_gaxtuh     ( 2, sia.cbs, matAXT06, yr );
-	str_res sr40 = test_gaxtuh     ( 3, sia.cbs, matAXT06, yr );
-	str_res sr41 = test_gaxtuh     ( 4, sia.cbs, matAXT06, yr );
+	STR_RES(test_gaxtuh     ( 1, sia.cbs, matAXT06, yr ));
+	STR_RES(test_gaxtuh     ( 2, sia.cbs, matAXT06, yr ));
+	STR_RES(test_gaxtuh     ( 3, sia.cbs, matAXT06, yr ));
+	STR_RES(test_gaxtuh     ( 4, sia.cbs, matAXT06, yr ));
 
-	str_res sr42 = test_gaxtuh     ( 1, sia.cbs, matAXT07, yr );
-	str_res sr43 = test_gaxtuh     ( 2, sia.cbs, matAXT07, yr );
-	str_res sr44 = test_gaxtuh     ( 3, sia.cbs, matAXT07, yr );
-	str_res sr45 = test_gaxtuh     ( 4, sia.cbs, matAXT07, yr );
+	STR_RES(test_gaxtuh     ( 1, sia.cbs, matAXT07, yr ));
+	STR_RES(test_gaxtuh     ( 2, sia.cbs, matAXT07, yr ));
+	STR_RES(test_gaxtuh     ( 3, sia.cbs, matAXT07, yr ));
+	STR_RES(test_gaxtuh     ( 4, sia.cbs, matAXT07, yr ));
 
-	str_res sr46 = test_gaxtuh     ( 1, sia.cbs, matAXT08, yr );
-	str_res sr47 = test_gaxtuh     ( 2, sia.cbs, matAXT08, yr );
-	str_res sr48 = test_gaxtuh     ( 3, sia.cbs, matAXT08, yr );
-	str_res sr49 = test_gaxtuh     ( 4, sia.cbs, matAXT08, yr );
+	STR_RES(test_gaxtuh     ( 1, sia.cbs, matAXT08, yr ));
+	STR_RES(test_gaxtuh     ( 2, sia.cbs, matAXT08, yr ));
+	STR_RES(test_gaxtuh     ( 3, sia.cbs, matAXT08, yr ));
+	STR_RES(test_gaxtuh     ( 4, sia.cbs, matAXT08, yr ));
 
-	str_res sr50 = test_gaxtch1    ( sia.cbs, matAXT09, yr );
+	STR_RES(test_gaxtch1    ( sia.cbs, matAXT09, yr ));
 
-	str_res sr51 = test_gaxtch     ( sia.cbs, matAXT10, yr );
-	str_res sr52 = test_gaxtch     ( sia.cbs, matAXT11, yr );
-	str_res sr53 = test_gaxtch     ( sia.cbs, matAXT12, yr );
+	STR_RES(test_gaxtch     ( sia.cbs, matAXT10, yr ));
+	STR_RES(test_gaxtch     ( sia.cbs, matAXT11, yr ));
+	STR_RES(test_gaxtch     ( sia.cbs, matAXT12, yr ));
 	// AXT format  ------------------------------------------------------------------------------------------------------------------
 
 	HDL; printf( "formats' data\n" ); HDL;
@@ -1081,59 +1087,13 @@ int main( int argc, char ** argv )
 
 	HDL; printf( "SpMV kernels' results\n" ); HDL;
 	printf( "%25s %15s %8s %15s %13s %13s %10s\n", "kernel", "exeTime [s]", "Gflops", "ordTime [s]", "errAbs", "errRel", "rowInd" );
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr01.name, sr01.et, ( sr01.flops * 1e-9 ), sr01.ot, sr01.sErr.aErr, sr01.sErr.rErr, sr01.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr02.name, sr02.et, ( sr02.flops * 1e-9 ), sr02.ot, sr02.sErr.aErr, sr02.sErr.rErr, sr02.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr03.name, sr03.et, ( sr03.flops * 1e-9 ), sr03.ot, sr03.sErr.aErr, sr03.sErr.rErr, sr03.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr04.name, sr04.et, ( sr04.flops * 1e-9 ), sr04.ot, sr04.sErr.aErr, sr04.sErr.rErr, sr04.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr05.name, sr05.et, ( sr05.flops * 1e-9 ), sr05.ot, sr05.sErr.aErr, sr05.sErr.rErr, sr05.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr06.name, sr06.et, ( sr06.flops * 1e-9 ), sr06.ot, sr06.sErr.aErr, sr06.sErr.rErr, sr06.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr07.name, sr07.et, ( sr07.flops * 1e-9 ), sr07.ot, sr07.sErr.aErr, sr07.sErr.rErr, sr07.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr08.name, sr08.et, ( sr08.flops * 1e-9 ), sr08.ot, sr08.sErr.aErr, sr08.sErr.rErr, sr08.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr09.name, sr09.et, ( sr09.flops * 1e-9 ), sr09.ot, sr09.sErr.aErr, sr09.sErr.rErr, sr09.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr10.name, sr10.et, ( sr10.flops * 1e-9 ), sr10.ot, sr10.sErr.aErr, sr10.sErr.rErr, sr10.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr11.name, sr11.et, ( sr11.flops * 1e-9 ), sr11.ot, sr11.sErr.aErr, sr11.sErr.rErr, sr11.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr12.name, sr12.et, ( sr12.flops * 1e-9 ), sr12.ot, sr12.sErr.aErr, sr12.sErr.rErr, sr12.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr13.name, sr13.et, ( sr13.flops * 1e-9 ), sr13.ot, sr13.sErr.aErr, sr13.sErr.rErr, sr13.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr14.name, sr14.et, ( sr14.flops * 1e-9 ), sr14.ot, sr14.sErr.aErr, sr14.sErr.rErr, sr14.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr15.name, sr15.et, ( sr15.flops * 1e-9 ), sr15.ot, sr15.sErr.aErr, sr15.sErr.rErr, sr15.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr16.name, sr16.et, ( sr16.flops * 1e-9 ), sr16.ot, sr16.sErr.aErr, sr16.sErr.rErr, sr16.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr17.name, sr17.et, ( sr17.flops * 1e-9 ), sr17.ot, sr17.sErr.aErr, sr17.sErr.rErr, sr17.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr18.name, sr18.et, ( sr18.flops * 1e-9 ), sr18.ot, sr18.sErr.aErr, sr18.sErr.rErr, sr18.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr19.name, sr19.et, ( sr19.flops * 1e-9 ), sr19.ot, sr19.sErr.aErr, sr19.sErr.rErr, sr19.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr20.name, sr20.et, ( sr20.flops * 1e-9 ), sr20.ot, sr20.sErr.aErr, sr20.sErr.rErr, sr20.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr21.name, sr21.et, ( sr21.flops * 1e-9 ), sr21.ot, sr21.sErr.aErr, sr21.sErr.rErr, sr21.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr22.name, sr22.et, ( sr22.flops * 1e-9 ), sr22.ot, sr22.sErr.aErr, sr22.sErr.rErr, sr22.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr23.name, sr23.et, ( sr23.flops * 1e-9 ), sr23.ot, sr23.sErr.aErr, sr23.sErr.rErr, sr23.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr24.name, sr24.et, ( sr24.flops * 1e-9 ), sr24.ot, sr24.sErr.aErr, sr24.sErr.rErr, sr24.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr25.name, sr25.et, ( sr25.flops * 1e-9 ), sr25.ot, sr25.sErr.aErr, sr25.sErr.rErr, sr25.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr26.name, sr26.et, ( sr26.flops * 1e-9 ), sr26.ot, sr26.sErr.aErr, sr26.sErr.rErr, sr26.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr27.name, sr27.et, ( sr27.flops * 1e-9 ), sr27.ot, sr27.sErr.aErr, sr27.sErr.rErr, sr27.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr28.name, sr28.et, ( sr28.flops * 1e-9 ), sr28.ot, sr28.sErr.aErr, sr28.sErr.rErr, sr28.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr29.name, sr29.et, ( sr29.flops * 1e-9 ), sr29.ot, sr29.sErr.aErr, sr29.sErr.rErr, sr29.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr30.name, sr30.et, ( sr30.flops * 1e-9 ), sr30.ot, sr30.sErr.aErr, sr30.sErr.rErr, sr30.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr31.name, sr31.et, ( sr31.flops * 1e-9 ), sr31.ot, sr31.sErr.aErr, sr31.sErr.rErr, sr31.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr32.name, sr32.et, ( sr32.flops * 1e-9 ), sr32.ot, sr32.sErr.aErr, sr32.sErr.rErr, sr32.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr33.name, sr33.et, ( sr33.flops * 1e-9 ), sr33.ot, sr33.sErr.aErr, sr33.sErr.rErr, sr33.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr34.name, sr34.et, ( sr34.flops * 1e-9 ), sr34.ot, sr34.sErr.aErr, sr34.sErr.rErr, sr34.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr35.name, sr35.et, ( sr35.flops * 1e-9 ), sr35.ot, sr35.sErr.aErr, sr35.sErr.rErr, sr35.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr36.name, sr36.et, ( sr36.flops * 1e-9 ), sr36.ot, sr36.sErr.aErr, sr36.sErr.rErr, sr36.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr37.name, sr37.et, ( sr37.flops * 1e-9 ), sr37.ot, sr37.sErr.aErr, sr37.sErr.rErr, sr37.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr38.name, sr38.et, ( sr38.flops * 1e-9 ), sr38.ot, sr38.sErr.aErr, sr38.sErr.rErr, sr38.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr39.name, sr39.et, ( sr39.flops * 1e-9 ), sr39.ot, sr39.sErr.aErr, sr39.sErr.rErr, sr39.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr40.name, sr40.et, ( sr40.flops * 1e-9 ), sr40.ot, sr40.sErr.aErr, sr40.sErr.rErr, sr40.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr41.name, sr41.et, ( sr41.flops * 1e-9 ), sr41.ot, sr41.sErr.aErr, sr41.sErr.rErr, sr41.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr42.name, sr42.et, ( sr42.flops * 1e-9 ), sr42.ot, sr42.sErr.aErr, sr42.sErr.rErr, sr42.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr43.name, sr43.et, ( sr43.flops * 1e-9 ), sr43.ot, sr43.sErr.aErr, sr43.sErr.rErr, sr43.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr44.name, sr44.et, ( sr44.flops * 1e-9 ), sr44.ot, sr44.sErr.aErr, sr44.sErr.rErr, sr44.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr45.name, sr45.et, ( sr45.flops * 1e-9 ), sr45.ot, sr45.sErr.aErr, sr45.sErr.rErr, sr45.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr46.name, sr46.et, ( sr46.flops * 1e-9 ), sr46.ot, sr46.sErr.aErr, sr46.sErr.rErr, sr46.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr47.name, sr47.et, ( sr47.flops * 1e-9 ), sr47.ot, sr47.sErr.aErr, sr47.sErr.rErr, sr47.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr48.name, sr48.et, ( sr48.flops * 1e-9 ), sr48.ot, sr48.sErr.aErr, sr48.sErr.rErr, sr48.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr49.name, sr49.et, ( sr49.flops * 1e-9 ), sr49.ot, sr49.sErr.aErr, sr49.sErr.rErr, sr49.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr50.name, sr50.et, ( sr50.flops * 1e-9 ), sr50.ot, sr50.sErr.aErr, sr50.sErr.rErr, sr50.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr51.name, sr51.et, ( sr51.flops * 1e-9 ), sr51.ot, sr51.sErr.aErr, sr51.sErr.rErr, sr51.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr52.name, sr52.et, ( sr52.flops * 1e-9 ), sr52.ot, sr52.sErr.aErr, sr52.sErr.rErr, sr52.sErr.pos ); fflush(stdout);
-	printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n", sr53.name, sr53.et, ( sr53.flops * 1e-9 ), sr53.ot, sr53.sErr.aErr, sr53.sErr.rErr, sr53.sErr.pos ); fflush(stdout);
+	for (auto sr : srs)
+	{
+		printf( "%25s %15.7lf %8.3lf %15.7lf %11.3le %13.3le %12d\n",
+			sr.name, sr.et, ( sr.flops * 1e-9 ), sr.ot,
+			sr.sErr.aErr, sr.sErr.rErr, sr.sErr.pos );
+		fflush(stdout);
+	}
 
 	return( EXIT_SUCCESS );
 }
